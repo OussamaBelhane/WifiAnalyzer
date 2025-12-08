@@ -532,7 +532,7 @@ class NetworkAnalyzerApp(ctk.CTk):
                                    font=ctk.CTkFont(size=18, weight="bold"), text_color=COLOR_ACCENT_RED)
         title_label.grid(row=0, column=0, padx=20, pady=(20, 10))
         
-        version_label = ctk.CTkLabel(self.sidebar_frame, text="Network Analyzer v2.0", text_color=COLOR_TEXT_GRAY)
+        version_label = ctk.CTkLabel(self.sidebar_frame, text="Network Analyzer v1.0", text_color=COLOR_TEXT_GRAY)
         version_label.grid(row=1, column=0, padx=20, pady=(0, 30))
 
         # Navigation Buttons
