@@ -58,3 +58,4 @@ blocked_devices.json
 .coverage
 htmlcov/
 .pytest_cache/
+*.zip
