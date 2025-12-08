@@ -1,5 +1,60 @@
+# Environment variables
+.env
+
+# Release builds (not tracked)
+NetworkAnalyzer-Standard/
+NetworkAnalyzer-Neo4j/
+
+# Python
 __pycache__/
-*.pyc
-oui.txt
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
 venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# OUI Database (too large, auto-downloads)
+oui.txt
+
+# Runtime data files (user-specific)
+device_history.json
+device_statuses.json
+blocked_devices.json
+
+# Test files
+.coverage
+htmlcov/
+.pytest_cache/
