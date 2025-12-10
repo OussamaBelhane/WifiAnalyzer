@@ -141,14 +141,3 @@ For advanced users who want persistent database storage:
 - Device blocking uses ARP spoofing - use responsibly on networks you own
 - The app only scans your local network subnet
 
----
-
-## 📄 License
-
-MIT License - Feel free to use and modify!
-
----
-
-## 🤝 Contributing
-
-Pull requests welcome! Please open an issue first to discuss changes.
