@@ -1,0 +1,5 @@
+requests>=2.25.0
+scapy>=2.4.5
+customtkinter>=5.2.0
+neo4j>=5.14.0
+python-dotenv>=1.0.0
