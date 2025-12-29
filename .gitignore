@@ -1,6 +1,10 @@
 # Environment variables
 .env
 
+# Release builds (not tracked)
+NetworkAnalyzer-Standard/
+NetworkAnalyzer-Neo4j/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -42,10 +46,17 @@ Thumbs.db
 # Logs
 *.log
 
-# OUI Database (too large)
+# OUI Database (too large, auto-downloads)
 oui.txt
+
+# Runtime data files (user-specific)
+device_history.json
+device_statuses.json
+blocked_devices.json
 
 # Test files
 .coverage
 htmlcov/
 .pytest_cache/
+
+*.zip
