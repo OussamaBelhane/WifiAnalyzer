@@ -1283,76 +1283,12 @@ class NetworkAnalyzerApp(ctk.CTk):
                               command=lambda m=device['mac'], v=device.get('vendor'): self.block_device_action(m, v)).pack(side="left", padx=4)
 
     def refresh_blocked_list(self):
-        """Refreshes the blocked devices list."""
-        container = self.blocked_list_container 
-        
-        for widget in container.winfo_children():
-            widget.destroy()
-            
-        if not self.wifi_blocker or not self.wifi_blocker.blocked_devices:
-            ctk.CTkLabel(container, text="No devices are currently being blocked.", text_color=COLOR_TEXT_GRAY).pack(pady=20)
-            return
-            
-        for ip, info in self.wifi_blocker.blocked_devices.items():
-            self.create_blocked_card(ip, info, container)
+        """Refreshes the blocked devices list by using the unified device manager."""
+        # Use the unified Device Manager's list container
+        if hasattr(self, 'device_list_container'):
+            self.refresh_device_list("Blocked")
+        # Fallback: if we're on the Blocked tab, this will work automatically
 
-    def create_device_management_card(self, device, container, list_type):
-        """Creates a card for Known/Unknown lists."""
-        card_frame = ctk.CTkFrame(container, fg_color=COLOR_PANEL_DARK_CHARCOAL, corner_radius=8)
-        card_frame.pack(fill="x", pady=5)
-        
-        # Device Info
-        info_text = f"{device.get('vendor', 'Unknown')}\n{device['mac']}"
-        if 'ip' in device and device['ip'] != 'Unknown':
-             info_text += f"\n{device['ip']}"
-             
-        ctk.CTkLabel(card_frame, text=info_text, justify="left", 
-                     font=ctk.CTkFont(size=12)).pack(side="left", padx=10, pady=10)
-        
-        # Action Buttons
-        btn_frame = ctk.CTkFrame(card_frame, fg_color="transparent")
-        btn_frame.pack(side="right", padx=10, pady=10)
-        
-        if list_type == "Unknown":
-            # Mark Known
-            ctk.CTkButton(btn_frame, text="✓ Known", width=80, fg_color="green",
-                          command=lambda m=device['mac']: self.mark_device_as_known_action(m)).pack(side="left", padx=5)
-            
-            # Blocking Toggle Logic
-            is_blocked = False
-            device_ip = device.get('ip')
-            if self.wifi_blocker and device_ip and device_ip != 'Unknown':
-                if device_ip in self.wifi_blocker.blocked_devices and self.wifi_blocker.blocked_devices[device_ip]['active']:
-                    is_blocked = True
-            
-            if is_blocked:
-                # Show Unblock
-                ctk.CTkButton(btn_frame, text="Unblock", width=80, fg_color="green",
-                              command=lambda m=device['mac'], v=device.get('vendor'): self.unblock_device_by_mac_action(m)).pack(side="left", padx=5)
-            else:
-                # Show Block
-                ctk.CTkButton(btn_frame, text="🚫 Block", width=80, fg_color=COLOR_ACCENT_RED,
-                              command=lambda m=device['mac'], v=device.get('vendor'): self.block_device_action(m, v)).pack(side="left", padx=5)
-                              
-        else:
-            # Mark Unknown
-            ctk.CTkButton(btn_frame, text="? Unknown", width=80, fg_color=COLOR_ACCENT_RED,
-                          command=lambda m=device['mac']: self.mark_device_as_unknown_action(m)).pack(side="left", padx=5)
-            # Block (Known devices can also be blocked, standard Block button)
-            # Note: For known devices, we usually act nicely, but if requested we can add toggle too.
-            # For now keeping it standard block as per original design, but let's add toggle capability if it is already blocked.
-            is_blocked = False
-            device_ip = device.get('ip')
-            if self.wifi_blocker and device_ip and device_ip != 'Unknown':
-                if device_ip in self.wifi_blocker.blocked_devices and self.wifi_blocker.blocked_devices[device_ip]['active']:
-                    is_blocked = True
-                    
-            if is_blocked:
-                 ctk.CTkButton(btn_frame, text="Unblock", width=80, fg_color="green",
-                              command=lambda m=device['mac'], v=device.get('vendor'): self.unblock_device_by_mac_action(m)).pack(side="left", padx=5)
-            else:
-                 ctk.CTkButton(btn_frame, text="🚫 Block", width=80, fg_color=COLOR_ACCENT_RED,
-                              command=lambda m=device['mac'], v=device.get('vendor'): self.block_device_action(m, v)).pack(side="left", padx=5)
 
     def create_blocked_card(self, ip, info, container):
         """Creates a card for the Blocked Manager."""
@@ -1524,73 +1460,28 @@ class NetworkAnalyzerApp(ctk.CTk):
             self.log("Tip: Run a network scan first to refresh IP addresses.")
             return
             
+        # Check if already blocked before attempting
+        if device_ip in self.wifi_blocker.blocked_devices and self.wifi_blocker.blocked_devices[device_ip].get("active"):
+            self.log("Device is already being blocked.")
+            return
+        
         # Execute Block
-        self.log(f"Attacking {device_ip} ({mac})...")
+        self.log(f"Blocking {device_ip} ({mac})...")
         success, message = self.wifi_blocker.block_device(device_ip)
         
         if success:
-            self.log(f"SUCCESS: {message}. device is being disconnected.")
-            self.refresh_device_list(self.current_tab) # Refresh to show status
-        else:
-            self.log(f"FAILED: {message}")
-        
-        # Prepare blocking
-        self.log(f"Preparing to block {vendor} at {device_ip}...")
-        
-        # Check basic conditions
-        if device_ip == self.wifi_blocker.gateway_ip:
-            self.log("FAILED: Cannot block gateway")
-            return
-        
-        if device_ip == self.wifi_blocker.my_ip:
-            self.log("FAILED: Cannot block yourself")
-            return
-        
-        if device_ip in self.wifi_blocker.blocked_devices and self.wifi_blocker.blocked_devices[device_ip]["active"]:
-            self.log("FAILED: Device already blocked")
-            return
-        
-        # We already have the MAC from Neo4j - use it directly!
-        target_mac = mac.upper()
-        self.log(f"Using MAC from database: {target_mac}")
-        
-        # Create blocking entry directly
-        import threading
-        
-        self.wifi_blocker.blocked_devices[device_ip] = {
-            "mac": target_mac,
-            "active": True,
-            "thread": None,
-            "success": False
-        }
-        
-        # Start blocking thread
-        thread = threading.Thread(
-            target=self.wifi_blocker._block_thread,
-            args=(device_ip, target_mac),
-            daemon=True
-        )
-        self.wifi_blocker.blocked_devices[device_ip]["thread"] = thread
-        thread.start()
-        
-        # Wait a moment to check if it's working
-        import time
-        time.sleep(0.5)
-        
-        if self.wifi_blocker.blocked_devices[device_ip]["active"]:
-            self.log(f"SUCCESS: Blocking {vendor} ({target_mac}) at {device_ip}")
-            self.log("Device is now being blocked via ARP spoofing")
-            self.log("Blocking will continue until you close the application")
+            self.log(f"SUCCESS: {message}. Device is being disconnected.")
             # Save blocked devices to persist across restarts
             self._save_blocked_devices()
-            
+            # Sync to Neo4j if available
             if self.db_manager.use_neo4j:
                 try:
-                    self.db_manager.neo4j_manager.device_manager.set_device_blocked_status(target_mac, True)
+                    self.db_manager.neo4j_manager.device_manager.set_device_blocked_status(mac.upper(), True)
                 except Exception as e:
                     self.log(f"Error syncing block status to DB: {e}")
+            self.refresh_device_list(self.current_tab)  # Refresh to show status
         else:
-            self.log(f"FAILED: Could not start blocking for {vendor}")
+            self.log(f"FAILED: {message}")
 
     def _load_blocked_devices(self):
         """Loads blocked devices from JSON file and re-enables blocking."""
