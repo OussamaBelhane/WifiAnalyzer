@@ -1,0 +1,6 @@
+blocked_devices.json
+device_history.json
+device_statuses.json
+__pycache__/
+*.pyc
+.env

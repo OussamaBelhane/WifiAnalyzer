@@ -506,10 +506,14 @@ class NetworkAnalyzerApp(ctk.CTk):
         print(log_message)
         
         if hasattr(self, 'log_text_area'):
-            self.log_text_area.configure(state="normal")
-            self.log_text_area.insert("end", log_message + "\n")
-            self.log_text_area.see("end")
-            self.log_text_area.configure(state="disabled")
+            def _update_log():
+                self.log_text_area.configure(state="normal")
+                self.log_text_area.insert("end", log_message + "\n")
+                self.log_text_area.see("end")
+                self.log_text_area.configure(state="disabled")
+            
+            # Ensure UI update runs on main thread
+            self.after(0, _update_log)
 
     def update_system_status(self, status, color):
         """Updates the status indicator at the bottom of the sidebar."""
@@ -766,6 +770,7 @@ class NetworkAnalyzerApp(ctk.CTk):
         self.scan_button.configure(text="SCANNING...", state="disabled", fg_color="gray")
         
         scan_thread = Thread(target=self.run_scanner_logic)
+        scan_thread.daemon = True
         scan_thread.start()
 
     def run_scanner_logic(self):
