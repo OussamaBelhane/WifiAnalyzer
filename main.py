@@ -1155,6 +1155,11 @@ class NetworkAnalyzerApp(ctk.CTk):
         else:
              devices = [d for d in self.db_manager.local_cache if d.get('status') == filter_type]
 
+        # Filter: Only show currently connected devices (Active)
+        # This matches the Dashboard behavior as requested.
+        active_macs = {d['mac'] for d in self.detected_devices}
+        devices = [d for d in devices if d['mac'] in active_macs]
+
         # Sync with current scan results to get live IPs
         for device in devices:
             current_ip = 'Unknown'

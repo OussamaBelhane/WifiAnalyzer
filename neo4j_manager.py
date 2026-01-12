@@ -14,6 +14,7 @@ class Neo4jManager:
         self.uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
         self.user = os.getenv("NEO4J_USERNAME", "neo4j")
         self.password = os.getenv("NEO4J_PASSWORD", "password")
+        self.database = os.getenv("NEO4J_DATABASE", "neo4j")
         self.driver = None
         self.device_manager = None
         self.scan_manager = None
@@ -27,8 +28,9 @@ class Neo4jManager:
             print("[Neo4j] Connected successfully.")
             
             # Initialize sub-managers
-            self.device_manager = DeviceManager(self.driver)
-            self.scan_manager = ScanManager(self.driver)
+            # Initialize sub-managers
+            self.device_manager = DeviceManager(self.driver, self.database)
+            self.scan_manager = ScanManager(self.driver, self.database)
             
             # Initialize schema/constraints
             self._init_schema()
@@ -45,7 +47,7 @@ class Neo4jManager:
             "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Network) REQUIRE n.name IS UNIQUE"
         ]
         
-        with self.driver.session() as session:
+        with self.driver.session(database=self.database) as session:
             for q in queries:
                 try:
                     session.run(q)
@@ -65,7 +67,7 @@ class Neo4jManager:
             return None
         
         try:
-            with self.driver.session() as session:
+            with self.driver.session(database=self.database) as session:
                 result = session.run(query, parameters)
                 return [record.data() for record in result]
         except Exception as e:
@@ -78,8 +80,9 @@ class DeviceManager:
     Handles all operations related to Devices (creation, updates, status changes).
     Uses Neo4j Labels to represent status: :Known, :Blocked.
     """
-    def __init__(self, driver):
+    def __init__(self, driver, database):
         self.driver = driver
+        self.database = database
 
     def get_all_devices(self):
         """
@@ -98,7 +101,7 @@ class DeviceManager:
                labels(d) as labels
         """
         try:
-            with self.driver.session() as session:
+            with self.driver.session(database=self.database) as session:
                 result = session.run(query)
                 devices = []
                 for record in result:
@@ -129,7 +132,7 @@ class DeviceManager:
         RETURN count(s) as count
         """
         try:
-            with self.driver.session() as session:
+            with self.driver.session(database=self.database) as session:
                 result = session.run(query, mac=mac)
                 record = result.single()
                 return record["count"] if record else 0
@@ -144,7 +147,7 @@ class DeviceManager:
         RETURN d
         """
         try:
-            with self.driver.session() as session:
+            with self.driver.session(database=self.database) as session:
                 session.run(query, mac=mac)
         except Exception as e:
             print(f"[Neo4j] Error marking device known: {e}")
@@ -157,7 +160,7 @@ class DeviceManager:
         RETURN d
         """
         try:
-            with self.driver.session() as session:
+            with self.driver.session(database=self.database) as session:
                 session.run(query, mac=mac)
         except Exception as e:
             print(f"[Neo4j] Error marking device unknown: {e}")
@@ -171,18 +174,41 @@ class DeviceManager:
         RETURN d
         """
         try:
-            with self.driver.session() as session:
+            with self.driver.session(database=self.database) as session:
                 session.run(query, mac=mac)
         except Exception as e:
             print(f"[Neo4j] Error setting block status: {e}")
+
+    def get_known_devices(self):
+        """Returns all devices with the :Known label."""
+        query = "MATCH (d:Device:Known) RETURN d.mac as mac, d.vendor as vendor, d.ip as ip, 'Known' as status"
+        try:
+            with self.driver.session(database=self.database) as session:
+                result = session.run(query)
+                return [record.data() for record in result]
+        except Exception as e:
+            print(f"[Neo4j] Error fetching known devices: {e}")
+            return []
+
+    def get_unknown_devices(self):
+        """Returns all devices without the :Known label."""
+        query = "MATCH (d:Device) WHERE NOT d:Known RETURN d.mac as mac, d.vendor as vendor, d.ip as ip, 'Unknown' as status"
+        try:
+            with self.driver.session(database=self.database) as session:
+                result = session.run(query)
+                return [record.data() for record in result]
+        except Exception as e:
+            print(f"[Neo4j] Error fetching unknown devices: {e}")
+            return []
 
 
 class ScanManager:
     """
     Handles network scans and linking devices to scans.
     """
-    def __init__(self, driver):
+    def __init__(self, driver, database):
         self.driver = driver
+        self.database = database
 
     def create_scan(self, devices, duration):
         """
@@ -193,7 +219,7 @@ class ScanManager:
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         
         try:
-            with self.driver.session() as session:
+            with self.driver.session(database=self.database) as session:
                 # 1. Create Scan Node
                 session.run("""
                     CREATE (s:Scan {id: $scan_id, name: $scan_id, timestamp: $timestamp, duration: $duration})
@@ -248,7 +274,7 @@ class ScanManager:
         LIMIT $limit
         """
         try:
-            with self.driver.session() as session:
+            with self.driver.session(database=self.database) as session:
                 result = session.run(query, limit=limit)
                 return [record.data() for record in result]
         except Exception as e:

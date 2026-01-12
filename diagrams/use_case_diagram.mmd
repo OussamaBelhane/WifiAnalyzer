@@ -1,0 +1,35 @@
+graph LR
+    %% Actors
+    USER["👤 Administrateur"]
+    SYSTEM["⚙️ Système"]
+
+    %% Main Use Cases
+    UC1["Scanner le réseau"]
+    UC2["Voir les appareils"]
+    UC3["Gérer les appareils<br/>(Connu/Inconnu)"]
+    UC4["Bloquer un appareil"]
+    UC5["Débloquer un appareil"]
+    UC6["Voir l'historique"]
+    UC7["Auto-scan périodique"]
+
+    %% User interactions
+    USER --> UC1
+    USER --> UC2
+    USER --> UC3
+    USER --> UC4
+    USER --> UC5
+    USER --> UC6
+
+    %% System interactions
+    SYSTEM --> UC7
+
+    %% Dependencies
+    UC7 -.->|inclut| UC1
+    UC4 -.->|nécessite| UC2
+
+    %% Styling
+    classDef actor fill:#E8F4F8,stroke:#2980B9,stroke-width:3px,color:#000
+    classDef usecase fill:#D4EDDA,stroke:#28A745,stroke-width:2px,color:#000
+
+    class USER,SYSTEM actor
+    class UC1,UC2,UC3,UC4,UC5,UC6,UC7 usecase

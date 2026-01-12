@@ -1,0 +1,39 @@
+stateDiagram-v2
+    [*] --> Initialisation
+
+    Initialisation --> Prêt: Chargement OK
+    Initialisation --> Erreur: Échec
+
+    state Prêt {
+        [*] --> Idle
+        Idle --> EnScan: Démarrer scan
+        EnScan --> Idle: Scan terminé
+    }
+
+    Prêt --> Blocage: Bloquer appareil
+    
+    state Blocage {
+        [*] --> ARPSpoofing
+        ARPSpoofing --> ARPSpoofing: Envoyer paquets (loop)
+        ARPSpoofing --> [*]: Débloquer
+    }
+
+    Blocage --> Prêt: Appareil débloqué
+
+    Prêt --> Historique: Voir historique
+    Historique --> Prêt: Retour
+
+    Erreur --> Prêt: Réessayer
+    Prêt --> [*]: Fermer app
+
+    note right of Initialisation
+        Vérification privilèges
+        Chargement base de données
+        Chargement OUI vendeurs
+    end note
+
+    note right of ARPSpoofing
+        Thread continu envoyant
+        des paquets ARP falsifiés
+        toutes les 2 secondes
+    end note

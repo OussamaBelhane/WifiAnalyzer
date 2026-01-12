@@ -1,0 +1,44 @@
+graph TD
+    %% Entities
+    USER["👤 Utilisateur"]
+    NETWORK["🌐 Réseau Local"]
+
+    %% Main Processes
+    P1["Scanner Réseau"]
+    P2["Gérer Appareils"]
+    P3["Bloquer Appareils"]
+    P4["Afficher Interface"]
+
+    %% Data Stores
+    DS1[("Historique des scans")]
+    DS2[("Statuts des appareils")]
+    DS3[("Appareils bloqués")]
+
+    %% Flows
+    USER -->|Commandes| P1
+    USER -->|Commandes| P2
+    USER -->|Commandes| P3
+    
+    P1 -->|Scan ARP/ICMP| NETWORK
+    NETWORK -->|Réponses| P1
+    
+    P1 -->|Résultats| DS1
+    P2 -->|Statuts| DS2
+    P3 -->|Liste blocage| DS3
+    
+    DS1 -->|Données| P4
+    DS2 -->|Données| P4
+    DS3 -->|Données| P4
+    
+    P4 -->|Affichage| USER
+    
+    P3 -->|ARP Spoofing| NETWORK
+
+    %% Styling
+    classDef external fill:#E8F4F8,stroke:#2980B9,stroke-width:2px,color:#000
+    classDef process fill:#D4EDDA,stroke:#28A745,stroke-width:2px,color:#000
+    classDef datastore fill:#FFF3CD,stroke:#FFC107,stroke-width:2px,color:#000
+
+    class USER,NETWORK external
+    class P1,P2,P3,P4 process
+    class DS1,DS2,DS3 datastore

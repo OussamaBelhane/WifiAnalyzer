@@ -1,0 +1,28 @@
+sequenceDiagram
+    actor User
+    participant App as Application
+    participant Scanner as NetworkScanner
+    participant DB as Database
+
+    User->>App: Démarrer scan
+    activate App
+    
+    App->>Scanner: Lancer scan réseau
+    activate Scanner
+    
+    Note over Scanner: ARP Scan +<br/>ICMP Ping
+    
+    Scanner->>Scanner: Identifier appareils
+    Scanner->>Scanner: Lookup vendeurs (OUI)
+    
+    Scanner-->>App: Liste des appareils
+    deactivate Scanner
+    
+    App->>DB: Sauvegarder résultats
+    activate DB
+    DB-->>App: OK
+    deactivate DB
+    
+    App->>App: Afficher sur radar/tableau
+    App-->>User: Scan terminé
+    deactivate App

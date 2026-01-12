@@ -1,0 +1,34 @@
+classDiagram
+    %% Main Classes Only - Simplified View
+    
+    class NetworkAnalyzerApp {
+        GUI Application
+    }
+
+    class NetworkScanner {
+        Scans network devices
+    }
+
+    class WiFiBlocker {
+        Blocks devices via ARP
+    }
+
+    class DatabaseManager {
+        Manages storage
+    }
+
+    class Neo4jManager {
+        Graph database (optional)
+    }
+
+    %% Main Relationships
+    NetworkAnalyzerApp --> NetworkScanner : uses
+    NetworkAnalyzerApp --> WiFiBlocker : uses
+    NetworkAnalyzerApp --> DatabaseManager : uses
+    DatabaseManager --> Neo4jManager : uses (optional)
+
+    %% Notes
+    note for NetworkAnalyzerApp "Interface CustomTkinter\n- Radar Dashboard\n- Device Manager\n- History"
+    note for NetworkScanner "Scan réseau\n- ARP scan\n- ICMP ping\n- Lookup vendeur"
+    note for WiFiBlocker "Blocage d'appareils\n- ARP spoofing\n- Gestion blocklist"
+    note for DatabaseManager "Stockage\n- Neo4j (optionnel)\n- JSON (fallback)"
