@@ -50,13 +50,30 @@ A modern, cross-platform network scanning and device management application with
 
 ---
 
+### Linux (Fedora)
+
+1. **Install Dependencies**
+   ```bash
+   sudo dnf install python3 python3-pip python3-tkinter
+   pip install --user customtkinter scapy requests
+   ```
+
+2. **Run the Application**
+   ```bash
+   # If running on Wayland / Hyprland, grant Xwayland root display access:
+   xhost +SI:localuser:root
+   sudo -E env "PATH=$PATH" python3 main.py
+   ```
+
+---
+
 ### Linux (Debian/Ubuntu)
 
 1. **Install Dependencies**
    ```bash
    sudo apt update
    sudo apt install python3 python3-pip python3-tk
-   pip3 install customtkinter scapy requests
+   pip3 install --user customtkinter scapy requests
    ```
 
 2. **Run the Application**

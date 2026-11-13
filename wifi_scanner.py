@@ -1,3 +1,6 @@
+import warnings
+warnings.filterwarnings("ignore")
+
 import sys
 import os
 import time
@@ -9,7 +12,8 @@ import requests
 import concurrent.futures
 import uuid
 import re
-from scapy.all import ARP, Ether, srp
+from scapy.all import ARP, Ether, srp, conf, get_if_hwaddr
+conf.verb = 0
 
 # Try to import ctypes for Windows admin check
 try:
@@ -18,11 +22,17 @@ except ImportError:
     ctypes = None
 
 class NetworkScanner:
-    def __init__(self, oui_file="oui.txt"):
-        self.oui_file = oui_file
+    def __init__(self, oui_file=None):
+        if oui_file is None:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            self.oui_file = os.path.join(base_dir, "oui.txt")
+        else:
+            self.oui_file = oui_file
         self.vendors = {}
         self.my_ip = None
         self.my_mac = None
+        self.interface = None
+        self.has_admin = False
         
         self._check_admin()
         self._detect_self()
@@ -41,44 +51,65 @@ class NetworkScanner:
             except Exception:
                 pass
         else:
-            # Linux/Unix
             try:
                 is_admin = os.geteuid() == 0
             except AttributeError:
                 pass
 
+        self.has_admin = is_admin
         if not is_admin:
-            print("[-] Error: This script must be run as Administrator/Root.")
-            # For the purpose of this environment where we might be faking it or running in a container
-            # we will print but might not exit if we want to allow partial functionality, 
-            # but requirements said "print an error and exit".
-            # However, for testing in this agent environment, I'll allow it to continue if it's just a test runner.
-            # But strictly following requirements:
-            # sys.exit(1) 
-            # I will comment out sys.exit for now to allow unit tests to run without crashing the runner if they mock it wrong,
-            # but in production code it should be there. 
-            # Actually, I'll rely on the user running with sudo/admin.
-            sys.exit(1)
+            print("[!] Warning: Root/Administrator privileges not detected. Network raw packet operations may be restricted.")
 
     def _detect_self(self):
         """
-        Detects own IP and MAC address.
+        Detects own active network interface, IP, and real hardware MAC address.
         """
         try:
-            # Get IP
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            # Doesn't actually connect, just determines route
-            s.connect(("8.8.8.8", 80))
-            self.my_ip = s.getsockname()[0]
-            s.close()
-            
-            # Get MAC
-            # uuid.getnode() returns the MAC as a 48-bit integer
-            mac_int = uuid.getnode()
-            mac_hex = "{:012x}".format(mac_int)
-            self.my_mac = ":".join(mac_hex[i:i+2] for i in range(0, 12, 2)).upper()
-            
-            print(f"[*] Self Detected: {self.my_ip} ({self.my_mac})")
+            # 1. Attempt Scapy route lookup to find the active interface and IP
+            try:
+                route_info = conf.route.route("0.0.0.0")
+                if route_info and len(route_info) >= 3:
+                    self.interface = route_info[0]
+                    self.my_ip = route_info[1]
+            except Exception:
+                pass
+
+            # 2. Fallback IP detection via UDP socket
+            if not self.my_ip:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                self.my_ip = s.getsockname()[0]
+                s.close()
+
+            # 3. Detect real hardware MAC for the active interface
+            if self.interface:
+                try:
+                    hw = get_if_hwaddr(self.interface)
+                    if hw and hw != "00:00:00:00:00:00":
+                        self.my_mac = hw.upper()
+                except Exception:
+                    pass
+
+            # On Linux, fallback to /sys/class/net/{interface}/address
+            if not self.my_mac and self.interface and os.name != 'nt':
+                try:
+                    sys_mac_path = f"/sys/class/net/{self.interface}/address"
+                    if os.path.exists(sys_mac_path):
+                        with open(sys_mac_path, "r") as f:
+                            mac_str = f.read().strip()
+                            if mac_str:
+                                self.my_mac = mac_str.upper()
+                except Exception:
+                    pass
+
+            # 4. Final fallback to uuid.getnode()
+            if not self.my_mac:
+                mac_int = uuid.getnode()
+                mac_hex = "{:012x}".format(mac_int)
+                self.my_mac = ":".join(mac_hex[i:i+2] for i in range(0, 12, 2)).upper()
+
+            iface_str = f" [{self.interface}]" if self.interface else ""
+            print(f"[*] Self Detected: {self.my_ip} ({self.my_mac}){iface_str}")
         except Exception as e:
             print(f"[-] Error detecting self: {e}")
 
@@ -184,20 +215,17 @@ class NetworkScanner:
         Pings a single host.
         """
         try:
+            kwargs = {
+                "stdout": subprocess.DEVNULL,
+                "stderr": subprocess.DEVNULL
+            }
             if os.name == 'nt':
                 command = ["ping", "-n", "1", "-w", "200", ip]
-                creation_flags = 0x08000000 # CREATE_NO_WINDOW
+                kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
             else:
                 command = ["ping", "-c", "1", "-W", "1", ip]
-                creation_flags = 0
             
-            result = subprocess.run(
-                command, 
-                stdout=subprocess.DEVNULL, 
-                stderr=subprocess.DEVNULL,
-                creationflags=creation_flags
-            )
-            
+            result = subprocess.run(command, **kwargs)
             if result.returncode == 0:
                 return ip
         except Exception:
@@ -313,6 +341,11 @@ class NetworkScanner:
 
 if __name__ == "__main__":
     scanner = NetworkScanner()
+    if not scanner.has_admin:
+        print("[-] Error: Running a standalone scan requires Administrator (Windows) or Root (Linux) privileges.")
+        print("    Windows: Right-click terminal -> 'Run as Administrator'")
+        print("    Linux:   sudo python3 wifi_scanner.py")
+        sys.exit(1)
     results = scanner.scan()
     print("\n[+] Scan Results:")
     for device in results:

